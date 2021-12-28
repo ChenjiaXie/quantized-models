@@ -19,3 +19,12 @@ resnext101          : https://download.pytorch.org/models/quantized/resnext101_3
 shufflenetv2_x1.0   : https://download.pytorch.org/models/quantized/shufflenetv2_x1_fbgemm-db332c57.pth
 
 ghostnet            : https://1drv.ms/u/s!Ahqo_6nBJPIHhloNb-Rg2uXs38MU?e=Smakww
+
+## To do some operations before convolution layer in these networks：
+
+1. Ghostnet can do some operations on the feature maps of the  inter-layer  by manipulating the Class ConvX in the operations.py
+
+2. And other works  shoud modifies the Class Comp in operations.py
+
+# Run instructions
+python validate.py --data <imagenet foder location> --model <modelname> --actbit <8 or 16 for ghostnet>
