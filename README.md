@@ -27,9 +27,9 @@ ghostnet            : https://1drv.ms/u/s!Ahqo_6nBJPIHhloNb-Rg2uXs38MU?e=Smakww
 2. And other works  shoud modifies the Class Comp in operations.py
 
 # Run instructions
+
 python validate.py --data <imagenet foder location> --model <modelname> --actbit <8 or 16 for ghostnet>
 
-    # mobilenet_v3_large resnet_18 googlenet shufflenet_v2 inception_v3
 
     # python validate.py --model mobilenet_v3_large --data ./imagenet
 
