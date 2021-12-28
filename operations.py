@@ -66,21 +66,12 @@ class ConvX(nn.Conv2d):
 
 def part_quant(x, max, min, bitwidth):
     if max != min:
-        Scale = (2 ** bitwidth - 2) / (max - min)
+        Scale = (2 ** bitwidth - 1) / (max - min)
         Q_x = Round.apply((x - min) * Scale)
         return Q_x, 1 / Scale, min
     else:
         Q_x = x
         return Q_x, 1, 0
-
-def part_quant1(x, max, bitwidth, en):
-    if(en == 1):
-        lsb = 2**(Round.apply(torch.log2(max/2**(bitwidth-1))) + 1)
-    else:
-        lsb = 2**(Round.apply(torch.log2(max/2**(bitwidth))) + 1)
-    Q_x = Round.apply(x/lsb)*lsb
-    return Q_x
-    # return x
 
 class Round(torch.autograd.Function):
     @staticmethod
