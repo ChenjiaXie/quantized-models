@@ -28,7 +28,7 @@ torch.backends.cudnn.benchmark = True
 modelNames = loadModelNames()
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Inference')
-parser.add_argument('--data', metavar='DIR', default='/data/xiechenjia/imagenet',
+parser.add_argument('--data', metavar='DIR', default='./imagenet',
                     help='path to dataset')
 parser.add_argument('--output_dir', metavar='DIR', default='/cache/models/',
                     help='path to output files')
@@ -74,7 +74,7 @@ def main():
     else:
         model = model.cuda()
 
-    valdir = os.path.join(args.data, 'val1000-1')
+    valdir = os.path.join(args.data, 'val')
 
 
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
