@@ -3,7 +3,9 @@ from torch import Tensor
 import torch.nn as nn
 # from .utils import load_state_dict_from_url
 from typing import Type, Any, Callable, Union, List, Optional
+from operations import ReLUX
 
+from torch.nn import functional as F
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
@@ -23,15 +25,51 @@ model_urls = {
 }
 
 
-def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
+class ConvX2d(nn.Conv2d):  # MixConv: Mixed Depthwise Convolutional Kernels https://arxiv.org/abs/1907.09595
+    layer = 0
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,padding=0, dilation=1, groups=1, bias=True):
+        super(ConvX2d, self).__init__(in_channels, out_channels, kernel_size, stride,padding, dilation, groups, bias)
+        self.layer = ConvX2d.layer
+        ConvX2d.layer += 1
+
+    def forward(self, x):
+        output = F.conv2d(x, self.weight, self.bias, self.stride,self.padding, self.dilation, self.groups)
+        return output
+
+
+class PoolX2dAvg(nn.AdaptiveAvgPool2d):  # MixConv: Mixed Depthwise Convolutional Kernels https://arxiv.org/abs/1907.09595
+    layer = 0
+    def __init__(self, output_size):
+        super(PoolX2dAvg, self).__init__(output_size)
+        self.layer = PoolX2dAvg.layer
+        PoolX2dAvg.layer += 1
+
+    def forward(self, x):
+        output = F.adaptive_avg_pool2d(x, self.output_size)
+        return output
+
+class PoolX2dMax(nn.MaxPool2d):  # MixConv: Mixed Depthwise Convolutional Kernels https://arxiv.org/abs/1907.09595
+    layer = 0
+    def __init__(self, kernel_size, stride, padding=0, dilation=1 , return_indices=False, ceil_mode=False):
+        super(PoolX2dMax, self).__init__(kernel_size, stride, padding, dilation, return_indices, ceil_mode)
+        self.layer = PoolX2dMax.layer
+        PoolX2dMax.layer += 1
+
+    def forward(self, x):
+        output = F.max_pool2d(x, self.kernel_size, self.stride, self.padding, self.dilation, ceil_mode=self.ceil_mode, return_indices=self.return_indices)
+        return output
+
+
+
+def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> ConvX2d:
     """3x3 convolution with padding"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
+    return ConvX2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=dilation, groups=groups, bias=False, dilation=dilation)
 
 
-def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
+def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> ConvX2d:
     """1x1 convolution"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+    return ConvX2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
 
 class BasicBlock(nn.Module):
@@ -39,7 +77,7 @@ class BasicBlock(nn.Module):
 
     def __init__(
         self,
-        opts,
+        args,
         inplanes: int,
         planes: int,
         stride: int = 1,
@@ -59,7 +97,7 @@ class BasicBlock(nn.Module):
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = norm_layer(planes)
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = ReLUX(args,inplace=True)
         self.conv2 = conv3x3(planes, planes)
         self.bn2 = norm_layer(planes)
         self.downsample = downsample
@@ -94,6 +132,7 @@ class Bottleneck(nn.Module):
 
     def __init__(
         self,
+        args,
         inplanes: int,
         planes: int,
         stride: int = 1,
@@ -114,7 +153,7 @@ class Bottleneck(nn.Module):
         self.bn2 = norm_layer(width)
         self.conv3 = conv1x1(width, planes * self.expansion)
         self.bn3 = norm_layer(planes * self.expansion)
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = ReLUX(args,inplace=True)
         self.downsample = downsample
         self.stride = stride
 
@@ -145,7 +184,7 @@ class ResNet(nn.Module):
 
     def __init__(
         self,
-        opts,
+        args,
         block: Type[Union[BasicBlock, Bottleneck]],
         layers: List[int],
         num_classes: int = 1000,
@@ -171,23 +210,23 @@ class ResNet(nn.Module):
                              "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
+        self.conv1 = ConvX2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
                                bias=False)
         self.bn1 = norm_layer(self.inplanes)
-        self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(opts,block, 64, layers[0])
-        self.layer2 = self._make_layer(opts,block, 128, layers[1], stride=2,
+        self.relu = ReLUX(args,inplace=True)
+        self.maxpool = PoolX2dMax(kernel_size=3, stride=2, padding=1)
+        self.layer1 = self._make_layer(args,block, 64, layers[0])
+        self.layer2 = self._make_layer(args,block, 128, layers[1], stride=2,
                                        dilate=replace_stride_with_dilation[0])
-        self.layer3 = self._make_layer(opts,block, 256, layers[2], stride=2,
+        self.layer3 = self._make_layer(args,block, 256, layers[2], stride=2,
                                        dilate=replace_stride_with_dilation[1])
-        self.layer4 = self._make_layer(opts,block, 512, layers[3], stride=2,
+        self.layer4 = self._make_layer(args,block, 512, layers[3], stride=2,
                                        dilate=replace_stride_with_dilation[2])
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.avgpool = PoolX2dAvg((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
         for m in self.modules():
-            if isinstance(m, nn.Conv2d):
+            if isinstance(m, ConvX2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
             elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
                 nn.init.constant_(m.weight, 1)
@@ -204,7 +243,7 @@ class ResNet(nn.Module):
                     nn.init.constant_(m.bn2.weight, 0)  # type: ignore[arg-type]
         
 
-    def _make_layer(self, opts, block: Type[Union[BasicBlock, Bottleneck]], planes: int, blocks: int,
+    def _make_layer(self, args, block: Type[Union[BasicBlock, Bottleneck]], planes: int, blocks: int,
                     stride: int = 1, dilate: bool = False) -> nn.Sequential:
         norm_layer = self._norm_layer
         downsample = None
@@ -219,20 +258,17 @@ class ResNet(nn.Module):
             )
 
         layers = []
-        layers.append(block(opts, self.inplanes, planes, stride, downsample, self.groups,
+        layers.append(block(args, self.inplanes, planes, stride, downsample, self.groups,
                             self.base_width, previous_dilation, norm_layer))
         self.inplanes = planes * block.expansion
         for _ in range(1, blocks):
-            layers.append(block(opts,self.inplanes, planes, groups=self.groups,
+            layers.append(block(args,self.inplanes, planes, groups=self.groups,
                                 base_width=self.base_width, dilation=self.dilation,
                                 norm_layer=norm_layer))
 
         return nn.Sequential(*layers)
 
     def _forward_impl(self, x: Tensor) -> Tensor:
-        # See note [TorchScript super()]
-        # print('x',x)
-        # print('x_rept',x.q_scale())
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -254,6 +290,7 @@ class ResNet(nn.Module):
 
 
 def _resnet(
+    args,
     arch: str,
     block: Type[Union[BasicBlock, Bottleneck]],
     layers: List[int],
@@ -261,15 +298,14 @@ def _resnet(
     progress: bool,
     **kwargs: Any
 ) -> ResNet:
-    model = ResNet(block, layers, **kwargs)
-    # if pretrained:
-    #     # state_dict = load_state_dict_from_url(model_urls[arch],
-    #     #                                       progress=progress)
-    #     model.load_state_dict(state_dict)
+    model = ResNet(args,block, layers, **kwargs)
+    if pretrained:
+        import torch.utils.model_zoo as model_zoo
+        model.load_state_dict(model_zoo.load_url(model_urls[arch]))
     return model
 
 
-def resnet18(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
+def resnet18(args,pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
     r"""ResNet-18 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
 
@@ -277,11 +313,12 @@ def resnet18(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> 
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress,
+    model = _resnet(args,'resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress,
                    **kwargs)
+    return model
 
 
-def resnet34(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
+def resnet34(args,pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
     r"""ResNet-34 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
 
@@ -289,11 +326,11 @@ def resnet34(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> 
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _resnet('resnet34', BasicBlock, [3, 4, 6, 3], pretrained, progress,
+    model = _resnet(args,'resnet34', BasicBlock, [3, 4, 6, 3], pretrained, progress,
                    **kwargs)
+    return model
 
-
-def resnet50(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
+def resnet50(args,pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
     r"""ResNet-50 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
 
@@ -301,11 +338,12 @@ def resnet50(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> 
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
+    model =  _resnet(args,'resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
                    **kwargs)
+    return model
 
 
-def resnet101(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
+def resnet101(args,pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
     r"""ResNet-101 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
 
@@ -313,11 +351,12 @@ def resnet101(pretrained: bool = False, progress: bool = True, **kwargs: Any) ->
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _resnet('resnet101', Bottleneck, [3, 4, 23, 3], pretrained, progress,
+    model = _resnet(args,'resnet101', Bottleneck, [3, 4, 23, 3], pretrained, progress,
                    **kwargs)
+    return model
 
 
-def resnet152(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
+def resnet152(args,pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
     r"""ResNet-152 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
 
@@ -325,11 +364,11 @@ def resnet152(pretrained: bool = False, progress: bool = True, **kwargs: Any) ->
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return _resnet('resnet152', Bottleneck, [3, 8, 36, 3], pretrained, progress,
+    return _resnet(args,'resnet152', Bottleneck, [3, 8, 36, 3], pretrained, progress,
                    **kwargs)
 
 
-def resnext50_32x4d(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
+def resnext50_32x4d(args,pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
     r"""ResNeXt-50 32x4d model from
     `"Aggregated Residual Transformation for Deep Neural Networks" <https://arxiv.org/pdf/1611.05431.pdf>`_.
 
@@ -339,11 +378,11 @@ def resnext50_32x4d(pretrained: bool = False, progress: bool = True, **kwargs: A
     """
     kwargs['groups'] = 32
     kwargs['width_per_group'] = 4
-    return _resnet('resnext50_32x4d', Bottleneck, [3, 4, 6, 3],
+    return _resnet(args,'resnext50_32x4d', Bottleneck, [3, 4, 6, 3],
                    pretrained, progress, **kwargs)
 
 
-def resnext101_32x8d(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
+def resnext101_32x8d(args,pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
     r"""ResNeXt-101 32x8d model from
     `"Aggregated Residual Transformation for Deep Neural Networks" <https://arxiv.org/pdf/1611.05431.pdf>`_.
 
@@ -353,11 +392,11 @@ def resnext101_32x8d(pretrained: bool = False, progress: bool = True, **kwargs: 
     """
     kwargs['groups'] = 32
     kwargs['width_per_group'] = 8
-    return _resnet('resnext101_32x8d', Bottleneck, [3, 4, 23, 3],
+    return _resnet(args,'resnext101_32x8d', Bottleneck, [3, 4, 23, 3],
                    pretrained, progress, **kwargs)
 
 
-def wide_resnet50_2(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
+def wide_resnet50_2(args,pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
     r"""Wide ResNet-50-2 model from
     `"Wide Residual Networks" <https://arxiv.org/pdf/1605.07146.pdf>`_.
 
@@ -371,11 +410,11 @@ def wide_resnet50_2(pretrained: bool = False, progress: bool = True, **kwargs: A
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     kwargs['width_per_group'] = 64 * 2
-    return _resnet('wide_resnet50_2', Bottleneck, [3, 4, 6, 3],
+    return _resnet(args,'wide_resnet50_2', Bottleneck, [3, 4, 6, 3],
                    pretrained, progress, **kwargs)
 
 
-def wide_resnet101_2(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
+def wide_resnet101_2(args,pretrained: bool = False, progress: bool = True, **kwargs: Any) -> ResNet:
     r"""Wide ResNet-101-2 model from
     `"Wide Residual Networks" <https://arxiv.org/pdf/1605.07146.pdf>`_.
 
@@ -389,5 +428,5 @@ def wide_resnet101_2(pretrained: bool = False, progress: bool = True, **kwargs: 
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     kwargs['width_per_group'] = 64 * 2
-    return _resnet('wide_resnet101_2', Bottleneck, [3, 4, 23, 3],
+    return _resnet(args,'wide_resnet101_2', Bottleneck, [3, 4, 23, 3],
                    pretrained, progress, **kwargs)

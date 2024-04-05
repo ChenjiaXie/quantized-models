@@ -5,7 +5,7 @@ from torch import nn, Tensor
 from torch.nn import functional as F
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from operations import ComP
+from operations import ReLUX, HardX, ReLU6X
 
 # from torchvision.models.utils import load_state_dict_from_url
 # from .mobilenetv2 import _make_divisible, ConvBNActivation
@@ -18,6 +18,44 @@ model_urls = {
     "mobilenet_v3_large": "https://download.pytorch.org/models/mobilenet_v3_large-8738ca79.pth",
     "mobilenet_v3_small": "https://download.pytorch.org/models/mobilenet_v3_small-047dcff4.pth",
 }
+
+
+from torch.nn import functional as F
+class ConvX2d(nn.Conv2d):  # MixConv: Mixed Depthwise Convolutional Kernels https://arxiv.org/abs/1907.09595
+    layer = 0
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,padding=0, dilation=1, groups=1, bias=True):
+        super(ConvX2d, self).__init__(in_channels, out_channels, kernel_size, stride,padding, dilation, groups, bias)
+        self.layer = ConvX2d.layer
+        ConvX2d.layer += 1
+
+    def forward(self, x):
+        output = F.conv2d(x, self.weight, self.bias, self.stride,self.padding, self.dilation, self.groups)
+        return output
+
+
+class PoolX2dAvg(nn.AdaptiveAvgPool2d):  # MixConv: Mixed Depthwise Convolutional Kernels https://arxiv.org/abs/1907.09595
+    layer = 0
+    def __init__(self, output_size):
+        super(PoolX2dAvg, self).__init__(output_size)
+        self.layer = PoolX2dAvg.layer
+        PoolX2dAvg.layer += 1
+
+    def forward(self, x):
+        output = F.adaptive_avg_pool2d(x, self.output_size)
+        return output
+
+class PoolX2dMax(nn.MaxPool2d):  # MixConv: Mixed Depthwise Convolutional Kernels https://arxiv.org/abs/1907.09595
+    layer = 0
+    def __init__(self, kernel_size, stride, padding=0, dilation=1 , return_indices=False, ceil_mode=False):
+        super(PoolX2dMax, self).__init__(kernel_size, stride, padding, dilation, return_indices, ceil_mode)
+        self.layer = PoolX2dMax.layer
+        PoolX2dMax.layer += 1
+
+    def forward(self, x):
+        output = F.max_pool2d(x, self.kernel_size, self.stride, self.padding, self.dilation, ceil_mode=self.ceil_mode, return_indices=self.return_indices)
+        return output
+
+
 
 def _make_divisible(v, divisor, min_value=None):
     """
@@ -55,22 +93,16 @@ class ConvBNActivation(nn.Sequential):
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         if activation_layer is None:
-            activation_layer = nn.ReLU6
+            activation_layer = ReLU6X
         super().__init__(
-            nn.Conv2d(in_planes, out_planes, kernel_size, stride, padding, dilation=dilation, groups=groups,
+            ConvX2d(in_planes, out_planes, kernel_size, stride, padding, dilation=dilation, groups=groups,
                       bias=False),
             norm_layer(out_planes),
-            activation_layer(inplace=True),
+            activation_layer(args),
         )
         self.out_channels = out_planes
-        self.comp = ComP(args)
     def forward(self, input):
-        # for module in self:
-        #     print(module)
-        #     input = module(input)
         for i in range(len(self)):
-            if(i==0):
-                input = self.comp(input)
             input = self[i](input)
         return input
         
@@ -81,18 +113,14 @@ class SqueezeExcitation(nn.Module):
     def __init__(self, args, input_channels: int, squeeze_factor: int = 4):
         super().__init__()
         squeeze_channels = _make_divisible(input_channels // squeeze_factor, 8)
-        self.comp1 = ComP(args)
-        self.fc1 = nn.Conv2d(input_channels, squeeze_channels, 1)
+        self.fc1 = ConvX2d(input_channels, squeeze_channels, 1)
         self.relu = nn.ReLU(inplace=True)
-        self.comp2 = ComP(args)
-        self.fc2 = nn.Conv2d(squeeze_channels, input_channels, 1)
+        self.fc2 = ConvX2d(squeeze_channels, input_channels, 1)
 
     def _scale(self, input: Tensor, inplace: bool) -> Tensor:
         scale = F.adaptive_avg_pool2d(input, 1)
-        scale = self.comp1(scale)
         scale = self.fc1(scale)
         scale = self.relu(scale)
-        scale = self.comp2(scale)
         scale = self.fc2(scale)
         return F.hardsigmoid(scale, inplace=inplace)
 
@@ -130,7 +158,7 @@ class InvertedResidual(nn.Module):
         self.use_res_connect = cnf.stride == 1 and cnf.input_channels == cnf.out_channels
 
         layers: List[nn.Module] = []
-        activation_layer = nn.Hardswish if cnf.use_hs else nn.ReLU
+        activation_layer = HardX if cnf.use_hs else ReLUX
 
         # expand
         if cnf.expanded_channels != cnf.input_channels:
@@ -213,7 +241,7 @@ class MobileNetV3(nn.Module):
                                        norm_layer=norm_layer, activation_layer=nn.Hardswish))
 
         self.features = nn.Sequential(*layers)
-        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.avgpool = PoolX2dAvg(1)
         self.classifier = nn.Sequential(
             nn.Linear(lastconv_output_channels, last_channel),
             nn.Hardswish(inplace=True),
@@ -222,7 +250,7 @@ class MobileNetV3(nn.Module):
         )
 
         for m in self.modules():
-            if isinstance(m, nn.Conv2d):
+            if isinstance(m, ConvX2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out')
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
@@ -234,7 +262,6 @@ class MobileNetV3(nn.Module):
                 nn.init.zeros_(m.bias)
 
     def _forward_impl(self, x: Tensor) -> Tensor:
-        # print(self.features)
         x = self.features(x)
 
         x = self.avgpool(x)
@@ -300,6 +327,7 @@ def _mobilenet_v3_conf(arch: str, params: Dict[str, Any]):
 
 
 def _mobilenet_v3_model(
+    args, 
     arch: str,
     inverted_residual_setting: List[InvertedResidualConfig],
     last_channel: int,
@@ -307,16 +335,12 @@ def _mobilenet_v3_model(
     progress: bool,
     **kwargs: Any
 ):
-    model = MobileNetV3(inverted_residual_setting, last_channel, **kwargs)
-    # if pretrained:
-    #     if model_urls.get(arch, None) is None:
-    #         raise ValueError("No checkpoint is available for model type {}".format(arch))
-    #     state_dict = load_state_dict_from_url(model_urls[arch], progress=progress)
-    #     model.load_state_dict(state_dict)
+    model = MobileNetV3(args, inverted_residual_setting, last_channel, **kwargs)
+        
     return model
 
 
-def mobilenet_v3_large(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> MobileNetV3:
+def mobilenet_v3_large(args, pretrained: bool = False, progress: bool = True, **kwargs: Any) -> MobileNetV3:
     """
     Constructs a large MobileNetV3 architecture from
     `"Searching for MobileNetV3" <https://arxiv.org/abs/1905.02244>`_.
@@ -327,10 +351,14 @@ def mobilenet_v3_large(pretrained: bool = False, progress: bool = True, **kwargs
     """
     arch = "mobilenet_v3_large"
     inverted_residual_setting, last_channel = _mobilenet_v3_conf(arch, kwargs)
-    return _mobilenet_v3_model(arch, inverted_residual_setting, last_channel, pretrained, progress, **kwargs)
+    model = _mobilenet_v3_model(args, arch, inverted_residual_setting, last_channel, pretrained, progress, **kwargs)
+    if pretrained:
+        import torch.utils.model_zoo as model_zoo
+        model.load_state_dict(model_zoo.load_url(model_urls['mobilenet_v3_large']))
+    return model
 
 
-def mobilenet_v3_small(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> MobileNetV3:
+def mobilenet_v3_small(args, pretrained: bool = False, progress: bool = True, **kwargs: Any) -> MobileNetV3:
     """
     Constructs a small MobileNetV3 architecture from
     `"Searching for MobileNetV3" <https://arxiv.org/abs/1905.02244>`_.
@@ -341,4 +369,8 @@ def mobilenet_v3_small(pretrained: bool = False, progress: bool = True, **kwargs
     """
     arch = "mobilenet_v3_small"
     inverted_residual_setting, last_channel = _mobilenet_v3_conf(arch, kwargs)
-    return _mobilenet_v3_model(arch, inverted_residual_setting, last_channel, pretrained, progress, **kwargs)
+    model = _mobilenet_v3_model(args, arch, inverted_residual_setting, last_channel, pretrained, progress, **kwargs)
+    if pretrained:
+        import torch.utils.model_zoo as model_zoo
+        model.load_state_dict(model_zoo.load_url(model_urls['mobilenet_v3_small']))
+    return model

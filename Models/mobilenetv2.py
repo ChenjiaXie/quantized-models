@@ -8,6 +8,7 @@ from torch import Tensor
 from .misc import ConvNormActivation
 from ._utils import _make_divisible
 from typing import Callable, Any, Optional, List
+from operations import ReLUX
 
 
 __all__ = ['MobileNetV2', 'mobilenet_v2']
@@ -16,6 +17,20 @@ __all__ = ['MobileNetV2', 'mobilenet_v2']
 model_urls = {
     'mobilenet_v2': 'https://download.pytorch.org/models/mobilenet_v2-b0353104.pth',
 }
+
+
+
+from torch.nn import functional as F
+class ConvX2d(nn.Conv2d):  # MixConv: Mixed Depthwise Convolutional Kernels https://arxiv.org/abs/1907.09595
+    layer = 0
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,padding=0, dilation=1, groups=1, bias=True):
+        super(ConvX2d, self).__init__(in_channels, out_channels, kernel_size, stride,padding, dilation, groups, bias)
+        self.layer = ConvX2d.layer
+        ConvX2d.layer += 1
+
+    def forward(self, x):
+        output = F.conv2d(x, self.weight, self.bias, self.stride,self.padding, self.dilation, self.groups)
+        return output
 
 
 # necessary for backwards compatibility
@@ -65,7 +80,7 @@ class InvertedResidual(nn.Module):
             ConvNormActivation(opts,hidden_dim, hidden_dim, stride=stride, groups=hidden_dim, norm_layer=norm_layer,
                                activation_layer=nn.ReLU6),
             # pw-linear
-            nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
+            ConvX2d(hidden_dim, oup, 1, 1, 0, bias=False),
             norm_layer(oup),
         ])
         self.conv = nn.Sequential(*layers)
@@ -158,7 +173,7 @@ class MobileNetV2(nn.Module):
 
         # weight initialization
         for m in self.modules():
-            if isinstance(m, nn.Conv2d):
+            if isinstance(m, ConvX2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out')
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
@@ -183,7 +198,7 @@ class MobileNetV2(nn.Module):
         return self._forward_impl(x)
 
 
-def mobilenet_v2(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> MobileNetV2:
+def mobilenet_v2(args,pretrained: bool = False, progress: bool = True, **kwargs: Any) -> MobileNetV2:
     """
     Constructs a MobileNetV2 architecture from
     `"MobileNetV2: Inverted Residuals and Linear Bottlenecks" <https://arxiv.org/abs/1801.04381>`_.
@@ -192,9 +207,8 @@ def mobilenet_v2(pretrained: bool = False, progress: bool = True, **kwargs: Any)
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    model = MobileNetV2(**kwargs)
-    # if pretrained:
-    #     state_dict = load_state_dict_from_url(model_urls['mobilenet_v2'],
-    #                                           progress=progress)
-    #     model.load_state_dict(state_dict)
+    model = MobileNetV2(args,**kwargs)
+    if pretrained:
+        import torch.utils.model_zoo as model_zoo
+        model.load_state_dict(model_zoo.load_url(model_urls['mobilenet_v2']))
     return model

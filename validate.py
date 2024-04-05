@@ -22,6 +22,7 @@ import torchvision
 import Models
 from utils import loadModelNames
 import torchvision.models as models
+import pdb
 
 torch.backends.cudnn.benchmark = True
 
@@ -54,19 +55,10 @@ def main():
 
     modelClass = Models.__dict__[args.model]
 
-    model = modelClass(args,quantize=True,pretrained=True)
-
-    # model = resnet18(args,quantize=True,pretrained=True)
-    #model.load_state_dict(torch.load('resnet18-f37072fd.pth'))
-    # state_dict = torch.load('models/resnet18_fbgemm_16fa66dd.pth')
-    # model.load_state_dict(state_dict)
-    if(args.model=='ghostnet'):
-        model = model.loadPreTrained()
-    else:
-        model.loadPreTrained()
+    model = modelClass(args,pretrained=True)
 
     print(str(args.model)+' created.')
-    # print('model = ',model)
+
     if args.num_gpu > 1:
         model = torch.nn.DataParallel(model, device_ids=list(range(args.num_gpu))).cuda()
     elif args.num_gpu < 1:
@@ -91,6 +83,8 @@ def main():
 
     model.eval()
 
+    # print(model)
+
 
     validate_loss_fn = nn.CrossEntropyLoss().cuda()
     eval_metrics = validate(model, loader, validate_loss_fn, args)
@@ -108,28 +102,27 @@ def validate(model, loader, loss_fn, args, log_suffix=''):
     end = time.time()
     last_idx = len(loader) - 1
     i = 0
+    #pdb.set_trace()
     with torch.no_grad():
         for batch_idx, (input, target) in enumerate(loader):
+            #if batch_idx ==0:
             last_batch = (batch_idx == last_idx)
-            if(args.model == 'ghostnet'):
-                input = input.cuda()
-                target = target.cuda()
-            else:
-                input = input.cpu()
-                target = target.cpu()
-            output = model(input)
+            # input = input.cuda()
+            # target = target.cuda()
+            output = model(input.cuda())
             if isinstance(output, (tuple, list)):
                 output = output[0]
+            target = target.cuda()
             loss = loss_fn(output, target)
             acc1, acc5 = accuracy(output, target, topk=(1, 5))
             reduced_loss = loss.data
-            torch.cuda.synchronize()
+            # torch.cuda.synchronize()
             losses_m.update(reduced_loss.item(), input.size(0))
             top1_m.update(acc1.item(), output.size(0))
             top5_m.update(acc5.item(), output.size(0))
             batch_time_m.update(time.time() - end)
             end = time.time()
-            if (last_batch or batch_idx % 10 == 0):
+            if (last_batch or batch_idx % 10 == 0 and batch_idx != 0):
                 log_name = 'Test' + log_suffix
                 logging.info(
                     '{0}: [{1:>4d}/{2}]  '
@@ -140,6 +133,11 @@ def validate(model, loader, loss_fn, args, log_suffix=''):
                         log_name, batch_idx, last_idx, batch_time=batch_time_m,
                         loss=losses_m, top1=top1_m, top5=top5_m))
                 print('batch{} '.format(batch_idx), OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)]))
+            
+            # CONVSIZE = np.array([x.CONVSIZE for x in model.modules() if hasattr(x, "CONVSIZE")]).sum()
+            # POOLSIZE = np.array([x.POOLSIZE for x in model.modules() if hasattr(x, "POOLSIZE")]).sum()
+            # print(f'TOTAL POOL KB:{POOLSIZE:<4.4f} | CONV KB:{CONVSIZE:<4.4f} | RATE:{POOLSIZE/CONVSIZE*100:<4.4f}%')
+                
 
     metrics = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
 

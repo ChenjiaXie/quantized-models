@@ -5,7 +5,7 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 # from .utils import load_state_dict_from_url
 from typing import Callable, Any, Optional, Tuple, List
-from operations import ComP
+from operations import  ReLUX
 
 
 __all__ = ['Inception3', 'inception_v3', 'InceptionOutputs', '_InceptionOutputs']
@@ -22,6 +22,43 @@ InceptionOutputs.__annotations__ = {'logits': Tensor, 'aux_logits': Optional[Ten
 # Script annotations failed with _GoogleNetOutputs = namedtuple ...
 # _InceptionOutputs set here for backwards compat
 _InceptionOutputs = InceptionOutputs
+
+
+from torch.nn import functional as F
+class ConvX2d(nn.Conv2d):  # MixConv: Mixed Depthwise Convolutional Kernels https://arxiv.org/abs/1907.09595
+    layer = 0
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,padding=0, dilation=1, groups=1, bias=True):
+        super(ConvX2d, self).__init__(in_channels, out_channels, kernel_size, stride,padding, dilation, groups, bias)
+        self.layer = ConvX2d.layer
+        ConvX2d.layer += 1
+
+    def forward(self, x):
+        output = F.conv2d(x, self.weight, self.bias, self.stride,self.padding, self.dilation, self.groups)
+        return output
+
+
+class PoolX2dAvg(nn.AdaptiveAvgPool2d):  # MixConv: Mixed Depthwise Convolutional Kernels https://arxiv.org/abs/1907.09595
+    layer = 0
+    def __init__(self, output_size):
+        super(PoolX2dAvg, self).__init__(output_size)
+        self.layer = PoolX2dAvg.layer
+        PoolX2dAvg.layer += 1
+
+    def forward(self, x):
+        output = F.adaptive_avg_pool2d(x, self.output_size)
+        return output
+
+class PoolX2dMax(nn.MaxPool2d):  # MixConv: Mixed Depthwise Convolutional Kernels https://arxiv.org/abs/1907.09595
+    layer = 0
+    def __init__(self, kernel_size, stride, padding=0, dilation=1 , return_indices=False, ceil_mode=False):
+        super(PoolX2dMax, self).__init__(kernel_size, stride, padding, dilation, return_indices, ceil_mode)
+        self.layer = PoolX2dMax.layer
+        PoolX2dMax.layer += 1
+
+    def forward(self, x):
+        output = F.max_pool2d(x, self.kernel_size, self.stride, self.padding, self.dilation, ceil_mode=self.ceil_mode, return_indices=self.return_indices)
+        return output
+
 
 
 def inception_v3(opts, pretrained: bool = False, progress: bool = True, **kwargs: Any) -> "Inception3":
@@ -50,9 +87,9 @@ def inception_v3(opts, pretrained: bool = False, progress: bool = True, **kwargs
             original_aux_logits = True
         kwargs['init_weights'] = False  # we are loading weights from a pretrained model
         model = Inception3(opts,**kwargs)
-        # state_dict = load_state_dict_from_url(model_urls['inception_v3_google'],
-        #                                       progress=progress)
-        # model.load_state_dict(state_dict)
+        import torch.utils.model_zoo as model_zoo
+        model.load_state_dict(model_zoo.load_url(model_urls['inception_v3_google']))
+
         if not original_aux_logits:
             model.aux_logits = False
             model.AuxLogits = None
@@ -97,10 +134,10 @@ class Inception3(nn.Module):
         self.Conv2d_1a_3x3 = conv_block(args, 3, 32, kernel_size=3, stride=2)
         self.Conv2d_2a_3x3 = conv_block(args, 32, 32, kernel_size=3)
         self.Conv2d_2b_3x3 = conv_block(args, 32, 64, kernel_size=3, padding=1)
-        self.maxpool1 = nn.MaxPool2d(kernel_size=3, stride=2)
+        self.maxpool1 = PoolX2dMax(kernel_size=3, stride=2)
         self.Conv2d_3b_1x1 = conv_block(args, 64, 80, kernel_size=1)
         self.Conv2d_4a_3x3 = conv_block(args, 80, 192, kernel_size=3)
-        self.maxpool2 = nn.MaxPool2d(kernel_size=3, stride=2)
+        self.maxpool2 = PoolX2dMax(kernel_size=3, stride=2)
         self.Mixed_5b = inception_a(args, 192, pool_features=32)
         self.Mixed_5c = inception_a(args, 256, pool_features=64)
         self.Mixed_5d = inception_a(args, 288, pool_features=64)
@@ -115,12 +152,12 @@ class Inception3(nn.Module):
         self.Mixed_7a = inception_d(args, 768)
         self.Mixed_7b = inception_e(args, 1280)
         self.Mixed_7c = inception_e(args, 2048)
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.avgpool = PoolX2dAvg((1, 1))
         self.dropout = nn.Dropout()
         self.fc = nn.Linear(2048, num_classes)
         if init_weights:
             for m in self.modules():
-                if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                if isinstance(m, ConvX2d) or isinstance(m, nn.Linear):
                     import scipy.stats as stats
                     stddev = m.stddev if hasattr(m, 'stddev') else 0.1
                     X = stats.truncnorm(-2, 2, scale=stddev)
@@ -478,12 +515,11 @@ class BasicConv2d(nn.Module):
         **kwargs: Any
     ) -> None:
         super(BasicConv2d, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, bias=False, **kwargs)
+        self.conv = ConvX2d(in_channels, out_channels, bias=False, **kwargs)
         self.bn = nn.BatchNorm2d(out_channels, eps=0.001)
-        self.comp = ComP(args)
+        self.relu = ReLUX(args)
 
     def forward(self, x: Tensor) -> Tensor:
-        x = self.comp(x)
         x = self.conv(x)
         x = self.bn(x)
-        return F.relu(x, inplace=True)
+        return self.relu(x, inplace=True)

@@ -1,10 +1,12 @@
-# mobilenet_v3_large resnet_18 googlenet shufflenet_v2 inception_v3
-# python validate.py --model mobilenet_v3_large --data ./imagenet
-# python validate.py --model resnet_18 --data ./imagenet
-# python validate.py --model resnet_50 --data ./imagenet
-# python validate.py --model resnext_101 --data ./imagenet
-# python validate.py --model googlenet --data ./imagenet
-# python validate.py --model shufflenet_v2 --data ./imagenet
-python validate.py --model inception_v3 --data ./imagenet
-# python validate.py --model mobilenet_v2 --data ./imagenet
-# python validate.py --model ghostnet --data ./imagenet --actbit 8
+log_path=./LOGS
+wt_path=./qmodels
+### models: vgg_* resnet_* convnext_* mobilenet_* efficientnet_* inception_v3 shufflenet_* googlenet
+model=convnext_tiny
+data_path=/data-hdd/xiechenjia/DATASETS/CNN_DATASETS/imagenet-1k
+
+mkdir -p $log_path
+mkdir -p $wt_path
+export TORCH_HOME=$wt_path
+
+
+python validate.py --model $model --data $data_path > $log_path/$model.log

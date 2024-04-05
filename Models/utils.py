@@ -1,5 +1,5 @@
 import torch
-from torch import nn
+from torch import nn, Tensor
 
 
 def _replace_relu(module):

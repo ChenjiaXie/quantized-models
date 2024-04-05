@@ -14,30 +14,17 @@ class ComP(nn.Module):
         ComP.count += 1
 
     def forward(self,input):
-        type = input.type()
-        print('ComP===============',self.count,input.type())
-        device = input.device
-        # input = input.cuda()
-        if(input.type() == 'torch.FloatTensor'):
-            input = input.cuda()
-        else:
-            scale = input.q_scale()
-            zp = input.q_zero_point()
-            input = input.int_repr().float()
 
-
-            # ------------------to be continue------------------
-            
-            # --------------------------------------------------
-
-
-        if(type != 'torch.FloatTensor'):
-            input = (input-zp)*scale
-            input=torch.quantize_per_tensor(input,scale,zp,dtype=torch.quint8)
-        input = input.to(device)
         return input
 
 
+class ACT(nn.Module):
+    layer=0
+    def __init__(self):
+        super(ACT, self).__init__()
+        self.layer = ACT.layer
+        ACT.layer += 1
+        self.count = 0
 
 class ConvX(nn.Conv2d):
     count = 0
@@ -52,16 +39,129 @@ class ConvX(nn.Conv2d):
 
     def forward(self, input):
         input = input.cuda()
-        # print('quan')
-        In_max = input.max()
-        In_min = input.min()
-        c = part_quant(input, In_max, In_min, self.args.actbit)
-        input1 = c[0]*c[1]+c[2]
+        # import os 
+        # if not os.path.exists('ConvX'):
+        #     os.mkdir('ConvX')
+        # np.save(f'ConvX/Layer{self.layer}_X.npy',np.array(input.cpu()))
+        # qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
+        # np.save(f'ConvX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
+        # rx = qunat_input * scale + min
 
-        rr = F.conv2d(input1, self.weight, self.bias, self.stride,
+        rr = F.conv2d(input, self.weight, self.bias, self.stride,
                             self.padding, self.dilation, self.groups)
         return rr
 
+class ReLUX(ACT):
+    def __init__(self, args, mxRelu6=False, inplace = True):
+        super(ReLUX, self).__init__()
+        self.args = args
+        if mxRelu6:
+            self.relu = nn.ReLU6(inplace=True)
+        else:
+            self.relu = nn.ReLU(inplace=True)
+    def forward(self, input,inplace=True):
+        self.count += 1
+        input = self.relu(input)
+        # import os 
+        # if not os.path.exists('ReLUX'):
+        #     os.mkdir('ReLUX')
+        # np.save(f'ReLUX/Layer{self.layer}_X.npy',np.array(input.cpu()))
+        # qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
+        # np.save(f'ReLUX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
+        # rx = qunat_input * scale + min
+
+        return input
+
+class ReLU6X(ACT):
+    def __init__(self, args):
+        super(ReLU6X, self).__init__()
+
+        self.relu = nn.ReLU6(inplace=True)
+        self.args = args
+
+
+    def forward(self, input,inplace=True):
+        input = self.relu(input)
+        # import os 
+        # if not os.path.exists('ReLU6X'):
+        #     os.mkdir('ReLU6X')
+        # np.save(f'ReLU6X/Layer{self.layer}_X.npy',np.array(input.cpu()))
+        # qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
+        # np.save(f'ReLU6X/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
+        # rx = qunat_input * scale + min
+        return input
+
+class HardX(ACT):
+    def __init__(self, args):
+        super(HardX, self).__init__()
+
+        self.relu = nn.Hardswish(inplace=True)
+        self.args = args
+
+    def forward(self, input,inplace=True):
+        input = self.relu(input)
+        # import os 
+        # if not os.path.exists('HardX'):
+        #     os.mkdir('HardX')
+        # np.save(f'HardX/Layer{self.layer}_X.npy',np.array(input.cpu()))
+        # qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
+        # np.save(f'HardX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
+        # rx = qunat_input * scale + min
+        return input
+
+class SiLUX(ACT):
+    def __init__(self, args):
+        super(SiLUX, self).__init__()
+
+        self.silu = nn.SiLU(inplace=True)
+        self.args = args
+    def forward(self, input,inplace=True):
+        input = self.silu(input)
+        # import os 
+        # if not os.path.exists('SiLUX'):
+        #     os.mkdir('SiLUX')
+        # np.save(f'SiLUX/Layer{self.layer}_X.npy',np.array(input.cpu()))
+        # qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
+        # np.save(f'SiLUX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
+        # rx = qunat_input * scale + min
+        return input
+
+class GELUX(ACT):
+    def __init__(self):
+        super(GELUX, self).__init__()
+
+        self.gelu = nn.GELU()
+        # self.args = args
+
+    def forward(self, input,inplace=True):
+        input = self.gelu(input)
+        # import os 
+        # if not os.path.exists('GELUX'):
+        #     os.mkdir('GELUX')
+        # np.save(f'GELUX/Layer{self.layer}_X.npy',np.array(input.cpu()))
+        # qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
+        # np.save(f'GELUX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
+        # rx = qunat_input * scale + min
+        return input
+
+class SigmoidX(ACT):
+    def __init__(self, args):
+        super(SigmoidX, self).__init__()
+
+        self.sigmoid = nn.Sigmoid()
+
+        self.args = args
+
+    def forward(self, input):
+        input = self.sigmoid(input)
+        # import os 
+        # if not os.path.exists('SigmoidX'):
+        #     os.mkdir('SigmoidX')
+        # np.save(f'SigmoidX/Layer{self.layer}_X.npy',np.array(input.cpu()))
+        # qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
+        # np.save(f'SigmoidX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
+        # rx = qunat_input * scale + min
+        return input
 
 
 
