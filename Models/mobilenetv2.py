@@ -8,7 +8,7 @@ from torch import Tensor
 from .misc import ConvNormActivation
 from ._utils import _make_divisible
 from typing import Callable, Any, Optional, List
-from operations import ReLUX
+from operations import ReLU6X
 
 
 __all__ = ['MobileNetV2', 'mobilenet_v2']
@@ -42,7 +42,7 @@ class _DeprecatedConvBNAct(ConvNormActivation):
         if kwargs.get("norm_layer", None) is None:
             kwargs["norm_layer"] = nn.BatchNorm2d
         if kwargs.get("activation_layer", None) is None:
-            kwargs["activation_layer"] = nn.ReLU6
+            kwargs["activation_layer"] = ReLU6X
         super().__init__(*args, **kwargs)
 
 
@@ -74,11 +74,11 @@ class InvertedResidual(nn.Module):
         if expand_ratio != 1:
             # pw
             layers.append(ConvNormActivation(opts,inp, hidden_dim, kernel_size=1, norm_layer=norm_layer,
-                                             activation_layer=nn.ReLU6))
+                                             activation_layer=ReLU6X))
         layers.extend([
             # dw
             ConvNormActivation(opts,hidden_dim, hidden_dim, stride=stride, groups=hidden_dim, norm_layer=norm_layer,
-                               activation_layer=nn.ReLU6),
+                               activation_layer=ReLU6X),
             # pw-linear
             ConvX2d(hidden_dim, oup, 1, 1, 0, bias=False),
             norm_layer(oup),
@@ -151,7 +151,7 @@ class MobileNetV2(nn.Module):
         input_channel = _make_divisible(input_channel * width_mult, round_nearest)
         self.last_channel = _make_divisible(last_channel * max(1.0, width_mult), round_nearest)
         features: List[nn.Module] = [ConvNormActivation(args,3, input_channel, stride=2, norm_layer=norm_layer,
-                                                        activation_layer=nn.ReLU6)]
+                                                        activation_layer=ReLU6X)]
         # building inverted residual blocks
         for t, c, n, s in inverted_residual_setting:
             output_channel = _make_divisible(c * width_mult, round_nearest)
@@ -161,7 +161,7 @@ class MobileNetV2(nn.Module):
                 input_channel = output_channel
         # building last several layers
         features.append(ConvNormActivation(args,input_channel, self.last_channel, kernel_size=1, norm_layer=norm_layer,
-                                           activation_layer=nn.ReLU6))
+                                           activation_layer=ReLU6X))
         # make it nn.Sequential
         self.features = nn.Sequential(*features)
 

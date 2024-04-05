@@ -39,13 +39,13 @@ class ConvX(nn.Conv2d):
 
     def forward(self, input):
         input = input.cuda()
-        # import os 
-        # if not os.path.exists('ConvX'):
-        #     os.mkdir('ConvX')
-        # np.save(f'ConvX/Layer{self.layer}_X.npy',np.array(input.cpu()))
-        # qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
-        # np.save(f'ConvX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
-        # rx = qunat_input * scale + min
+        import os 
+        if not os.path.exists(f'{self.args.model}_ConvX'):
+            os.mkdir(f'{self.args.model}_ConvX')
+        np.save(f'{self.args.model}_ConvX/Layer{self.layer}_X.npy',np.array(input.cpu()))
+        qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
+        np.save(f'{self.args.model}_ConvX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
+        rx = qunat_input * scale + min
 
         rr = F.conv2d(input, self.weight, self.bias, self.stride,
                             self.padding, self.dilation, self.groups)
@@ -62,13 +62,13 @@ class ReLUX(ACT):
     def forward(self, input,inplace=True):
         self.count += 1
         input = self.relu(input)
-        # import os 
-        # if not os.path.exists('ReLUX'):
-        #     os.mkdir('ReLUX')
-        # np.save(f'ReLUX/Layer{self.layer}_X.npy',np.array(input.cpu()))
-        # qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
-        # np.save(f'ReLUX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
-        # rx = qunat_input * scale + min
+        import os 
+        if not os.path.exists(f'{self.args.model}_ReLUX'):
+            os.mkdir(f'{self.args.model}_ReLUX')
+        np.save(f'{self.args.model}_ReLUX/Layer{self.layer}_X.npy',np.array(input.cpu()))
+        qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
+        np.save(f'{self.args.model}_ReLUX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
+        rx = qunat_input * scale + min
 
         return input
 
@@ -82,13 +82,13 @@ class ReLU6X(ACT):
 
     def forward(self, input,inplace=True):
         input = self.relu(input)
-        # import os 
-        # if not os.path.exists('ReLU6X'):
-        #     os.mkdir('ReLU6X')
-        # np.save(f'ReLU6X/Layer{self.layer}_X.npy',np.array(input.cpu()))
-        # qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
-        # np.save(f'ReLU6X/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
-        # rx = qunat_input * scale + min
+        import os 
+        if not os.path.exists(f'{self.args.model}_ReLU6X'):
+            os.mkdir(f'{self.args.model}_ReLU6X')
+        np.save(f'{self.args.model}_ReLU6X/Layer{self.layer}_X.npy',np.array(input.cpu()))
+        qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
+        np.save(f'{self.args.model}_ReLU6X/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
+        rx = qunat_input * scale + min
         return input
 
 class HardX(ACT):
@@ -100,13 +100,13 @@ class HardX(ACT):
 
     def forward(self, input,inplace=True):
         input = self.relu(input)
-        # import os 
-        # if not os.path.exists('HardX'):
-        #     os.mkdir('HardX')
-        # np.save(f'HardX/Layer{self.layer}_X.npy',np.array(input.cpu()))
-        # qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
-        # np.save(f'HardX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
-        # rx = qunat_input * scale + min
+        import os 
+        if not os.path.exists(f'{self.args.model}_HardX'):
+            os.mkdir(f'{self.args.model}_HardX')
+        np.save(f'{self.args.model}_HardX/Layer{self.layer}_X.npy',np.array(input.cpu()))
+        qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
+        np.save(f'{self.args.model}_HardX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
+        rx = qunat_input * scale + min
         return input
 
 class SiLUX(ACT):
@@ -117,13 +117,13 @@ class SiLUX(ACT):
         self.args = args
     def forward(self, input,inplace=True):
         input = self.silu(input)
-        # import os 
-        # if not os.path.exists('SiLUX'):
-        #     os.mkdir('SiLUX')
-        # np.save(f'SiLUX/Layer{self.layer}_X.npy',np.array(input.cpu()))
-        # qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
-        # np.save(f'SiLUX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
-        # rx = qunat_input * scale + min
+        import os 
+        if not os.path.exists(f'{self.args.model}_SiLUX'):
+            os.mkdir(f'{self.args.model}_SiLUX')
+        np.save(f'{self.args.model}_SiLUX/Layer{self.layer}_X.npy',np.array(input.cpu()))
+        qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
+        np.save(f'{self.args.model}_SiLUX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
+        rx = qunat_input * scale + min
         return input
 
 class GELUX(ACT):
@@ -135,13 +135,14 @@ class GELUX(ACT):
 
     def forward(self, input,inplace=True):
         input = self.gelu(input)
-        # import os 
-        # if not os.path.exists('GELUX'):
-        #     os.mkdir('GELUX')
-        # np.save(f'GELUX/Layer{self.layer}_X.npy',np.array(input.cpu()))
-        # qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
-        # np.save(f'GELUX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
-        # rx = qunat_input * scale + min
+        print(input.shape)
+        import os 
+        if not os.path.exists(f'{self.args.model}_GELUX'):
+            os.mkdir(f'{self.args.model}_GELUX')
+        np.save(f'{self.args.model}_GELUX/Layer{self.layer}_X.npy',np.array(input.cpu()))
+        qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
+        np.save(f'{self.args.model}_GELUX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
+        rx = qunat_input * scale + min
         return input
 
 class SigmoidX(ACT):
@@ -154,13 +155,13 @@ class SigmoidX(ACT):
 
     def forward(self, input):
         input = self.sigmoid(input)
-        # import os 
-        # if not os.path.exists('SigmoidX'):
-        #     os.mkdir('SigmoidX')
-        # np.save(f'SigmoidX/Layer{self.layer}_X.npy',np.array(input.cpu()))
-        # qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
-        # np.save(f'SigmoidX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
-        # rx = qunat_input * scale + min
+        import os 
+        if not os.path.exists(f'{self.args.model}_SigmoidX'):
+            os.mkdir(f'{self.args.model}_SigmoidX')
+        np.save(f'{self.args.model}_SigmoidX/Layer{self.layer}_X.npy',np.array(input.cpu()))
+        qunat_input, scale, min = part_quant(input, torch.max(input), torch.min(input), 8)
+        np.save(f'{self.args.model}_SigmoidX/Layer{self.layer}_QX.npy',np.array(qunat_input.cpu()))
+        rx = qunat_input * scale + min
         return input
 
 

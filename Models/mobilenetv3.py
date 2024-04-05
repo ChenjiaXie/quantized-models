@@ -228,7 +228,7 @@ class MobileNetV3(nn.Module):
         # building first layer
         firstconv_output_channels = inverted_residual_setting[0].input_channels
         layers.append(ConvBNActivation(args,3, firstconv_output_channels, kernel_size=3, stride=2, norm_layer=norm_layer,
-                                       activation_layer=nn.Hardswish))
+                                       activation_layer=HardX))
 
         # building inverted residual blocks
         for cnf in inverted_residual_setting:
@@ -238,13 +238,13 @@ class MobileNetV3(nn.Module):
         lastconv_input_channels = inverted_residual_setting[-1].out_channels
         lastconv_output_channels = 6 * lastconv_input_channels
         layers.append(ConvBNActivation(args,lastconv_input_channels, lastconv_output_channels, kernel_size=1,
-                                       norm_layer=norm_layer, activation_layer=nn.Hardswish))
+                                       norm_layer=norm_layer, activation_layer=HardX))
 
         self.features = nn.Sequential(*layers)
         self.avgpool = PoolX2dAvg(1)
         self.classifier = nn.Sequential(
             nn.Linear(lastconv_output_channels, last_channel),
-            nn.Hardswish(inplace=True),
+            HardX(args),
             nn.Dropout(p=0.2, inplace=True),
             nn.Linear(last_channel, num_classes),
         )
